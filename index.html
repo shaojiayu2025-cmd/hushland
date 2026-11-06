@@ -239,7 +239,7 @@ function toast(t){const d=document.createElement("div");d.className="toast";d.te
 
 /* ---------- sound: recorded loops (Pixabay, free license) with an adjustable mix ---------- */
 let ac=null,master=null,MIX={cricket:+store.get("xy-v-cricket"),fire:+store.get("xy-v-fire"),wind:+store.get("xy-v-wind")};
-for(const k in MIX)if(!(MIX[k]>=0&&MIX[k]<=1)||store.get("xy-v-"+k)==null)MIX[k]={cricket:.5,fire:.8,wind:.5}[k];
+for(const k in MIX)if(!(MIX[k]>=0&&MIX[k]<=1)||store.get("xy-v-"+k)==null)MIX[k]={cricket:.5,fire:1,wind:.5}[k];
 const CH={};
 function startAudio(){if(ac){ac.resume&&ac.resume();return}const C=window.AudioContext||window.webkitAudioContext;if(!C)return;
   try{ac=new C();master=ac.createGain();master.gain.value=0;master.connect(ac.destination);
@@ -248,7 +248,7 @@ function startAudio(){if(ac){ac.resume&&ac.resume();return}const C=window.AudioC
     const l=ac.createOscillator(),lg=ac.createGain();l.frequency.value=.06;lg.gain.value=.08;l.connect(lg);lg.connect(g.gain);l.start();
     setSound(true);loadLoop("cricket","audio/crickets.mp3",.6);loadLoop("fire","audio/fire.mp3",1)}catch(e){ac=null}}
 async function loadLoop(k,url,base){try{const buf=await ac.decodeAudioData(await (await fetch(url)).arrayBuffer());const s=ac.createBufferSource();s.buffer=buf;s.loop=true;const g=ac.createGain();g.gain.value=0;const lp=ac.createBiquadFilter();lp.type="lowpass";lp.frequency.value=k==="fire"?6000:9000;s.connect(lp);lp.connect(g);g.connect(master);s.start();CH[k]=g;CH[k+"Base"]=base;CH[k+"Lp"]=lp}catch(e){}}
-function fireLevel(){const d=Math.hypot(me.x,me.z);return clamp(1.15-d/14)*(me.k==="grass"?.7:1)}
+function fireLevel(){const d=Math.hypot(me.x,me.z);return clamp(1.35-d/13)*(me.k==="grass"?.7:1)}
 function applyMix(){if(!ac)return;const t=ac.currentTime;if(CH.wind)CH.wind.gain.setTargetAtTime(.3*MIX.wind,t,.2);if(CH.cricket)CH.cricket.gain.setTargetAtTime(CH.cricketBase*MIX.cricket,t,.2);if(CH.fire)CH.fire.gain.setTargetAtTime(CH.fireBase*MIX.fire*fireLevel(),t,.25)}
 function setMix(k,v){MIX[k]=clamp(+v);store.set("xy-v-"+k,String(MIX[k]));applyMix()}
 function setSound(v){soundOn=v;if(master)master.gain.setTargetAtTime(v?.8:0,ac.currentTime,.4)}
