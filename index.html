@@ -90,6 +90,7 @@ textarea{min-height:84px;resize:none;font-family:var(--serif);line-height:1.7}
 .tagname.mine{background:rgba(240,194,122,.85);color:var(--ink)}
 .layer{padding-top:30px;background:linear-gradient(transparent,rgba(5,7,13,.55) 60%,rgba(5,7,13,.8))}
 .dock{grid-template-columns:repeat(5,1fr)}
+.mix{display:flex;flex-direction:column;gap:10px}.mix label{display:flex;align-items:center;gap:12px;font-size:14px}.mix label span{width:3em;color:var(--dust)}.mix input[type=range]{flex:1;accent-color:var(--lamp);min-height:32px}
 .dock.d4{grid-template-columns:repeat(4,1fr)}.dock.d6{grid-template-columns:repeat(6,1fr)}.dock.d6 button{font-size:13px}
 </style>
 
@@ -167,13 +168,14 @@ function render(){
   }else{
     const onMat=me.pose!=="stand";
     let top="";
-    if(panel==="change")top=`<div class="eyebrow">就在这里，化成——</div><div class="row"><button class="btn ghost grow" id="toGrass">一株草</button><button class="btn ghost grow" id="toTree">一棵树</button></div>`;
+    if(panel==="sound")top=`<div class="eyebrow">夜里的声音</div><div class="mix">${[["cricket","虫鸣"],["fire","火"],["wind","风"]].map(([k,n])=>`<label><span>${n}</span><input type="range" min="0" max="1" step="0.02" value="${MIX[k]}" data-mix="${k}" id="mix-${k}" aria-label="${n}音量"></label>`).join("")}<button class="btn ghost" id="sndtoggle">${soundOn?"全部静音":"打开声音"}</button></div>`;
+    else if(panel==="change")top=`<div class="eyebrow">就在这里，化成——</div><div class="row"><button class="btn ghost grow" id="toGrass">一株草</button><button class="btn ghost grow" id="toTree">一棵树</button></div>`;
     else if(panel==="music")top=`<div class="eyebrow">附近的人会听到</div><div class="keys">${SCALE.map((s,i)=>`<button data-key="${i}" aria-label="音 ${s[1]}">${s[1]}</button>`).join("")}</div>`;
     else if(me.k!=="human")top=`<div class="hintline">${plantLine()}</div>`;
     else if(hint)top=`<div class="hintline">走到喜欢的地方，点“变身”。发光的草木里可能有人。</div>`;
     h=`<div class="top"><div class="hallwrap"><button class="chip hall" id="hall" aria-expanded="${hallOpen}">星野 ${hall} <span class="count">${people()}/${CAP}</span></button>
        ${hallOpen?`<div class="menu">${Array.from({length:HALLS},(_,i)=>`<button data-hall="${i+1}" ${i+1===hall?'aria-current="true"':""}>星野 ${i+1}</button>`).join("")}</div>`:""}</div>
-       <div class="tools"><button class="chip" id="snd" aria-label="${soundOn?"关闭声音":"打开声音"}">${soundOn?"声音开":"声音关"}</button></div></div>
+       <div class="tools"><button class="chip" id="snd" aria-pressed="${panel==="sound"}" aria-label="声音设置">${soundOn?"声音":"静音"}</button></div></div>
        ${linkState==="off"?`<div class="off">现在连不上别人，你看到的只有自己</div>`:""}
     <div class="layer"><div class="inner">${top}${me.k!=="human"?`<div class="dock d4"><button id="glow">亮一下</button><button id="sway">随风摇</button><button id="${me.k==="tree"?"toGrass":"toTree"}">${me.k==="tree"?"变成草":"变成树"}</button><button id="toHuman">变回人</button></div>`:`<div class="dock d6">
       <button id="sit" aria-pressed="${me.pose==="sit"}">${me.pose==="sit"?"起身":"坐下"}</button>
@@ -203,7 +205,8 @@ function bind(){
   on("wish",()=>{me.w=!me.w;panel=null;push();if(me.w&&!remotes.size)setTimeout(()=>{if(me.w&&!remotes.size){launch(true);me.w=false;push();render()}},1400);checkWishes();render()});
   on("music",()=>{panel=panel==="music"?null:"music";me.play=panel==="music";push();render()});
   on("gift",sendFlower);
-  on("snd",()=>{startAudio();setSound(!soundOn);render()});
+  on("snd",()=>{startAudio();panel=panel==="sound"?null:"sound";render()});on("sndtoggle",()=>{setSound(!soundOn);render()});
+  document.querySelectorAll("[data-mix]").forEach(i=>i.addEventListener("input",()=>setMix(i.dataset.mix,i.value)));
   on("hall",()=>{hallOpen=!hallOpen;render()});
   document.querySelectorAll("[data-hall]").forEach(b=>b.addEventListener("click",()=>{hallOpen=false;const n=+b.dataset.hall;if(n!==hall){me.pose="stand";me.mat=-1;joinHall(n)}render()}));
   document.querySelectorAll("[data-key]").forEach(b=>b.addEventListener("pointerdown",e=>{e.preventDefault();const n=+b.dataset.key;startAudio();pluck(SCALE[n][0],1);me.seq++;me.m={n,s:me.seq};push();strum=1;b.classList.add("on");setTimeout(()=>b.classList.remove("on"),160)}));
@@ -234,17 +237,21 @@ function stepFx(dt){for(let i=FX.length-1;i>=0;i--){const f=FX[i];f.t+=dt;const 
     f.pts.material.opacity=Math.sin(Math.PI*u)**.6*.95;const pk=Math.exp(-Math.pow((u-.45)/.14,2));f.fl.material.opacity=pk;f.fl.scale.setScalar(.6+pk*3.4);f.fl.position.y=f.y0+(f.to!=="human"?lerp(.8,.12,clamp(u*1.6)):lerp(.12,.8,clamp(u*1.6)))}}
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),3500)}
 
-/* ---------- sound ---------- */
-let ac=null,master=null;
+/* ---------- sound: recorded loops (Pixabay, free license) with an adjustable mix ---------- */
+let ac=null,master=null,MIX={cricket:+store.get("xy-v-cricket"),fire:+store.get("xy-v-fire"),wind:+store.get("xy-v-wind")};
+for(const k in MIX)if(!(MIX[k]>=0&&MIX[k]<=1)||store.get("xy-v-"+k)==null)MIX[k]={cricket:.5,fire:.8,wind:.5}[k];
+const CH={};
 function startAudio(){if(ac){ac.resume&&ac.resume();return}const C=window.AudioContext||window.webkitAudioContext;if(!C)return;
   try{ac=new C();master=ac.createGain();master.gain.value=0;master.connect(ac.destination);
     const len=ac.sampleRate*4,nb=ac.createBuffer(1,len,ac.sampleRate),d=nb.getChannelData(0);let b=0;for(let i=0;i<len;i++){b=(b+.02*(R0()*2-1))/1.02;d[i]=b*3.5}
-    const s=ac.createBufferSource();s.buffer=nb;s.loop=true;const lp=ac.createBiquadFilter();lp.type="lowpass";lp.frequency.value=520;const g=ac.createGain();g.gain.value=.16;s.connect(lp);lp.connect(g);g.connect(master);s.start();
-    const l=ac.createOscillator(),lg=ac.createGain();l.frequency.value=.06;lg.gain.value=.08;l.connect(lg);lg.connect(g.gain);l.start();setSound(true);cricket();crackle()}catch(e){ac=null}}
-function pop(gain,freq,dur){if(!ac||!soundOn)return;const n=Math.floor(ac.sampleRate*dur),b=ac.createBuffer(1,n,ac.sampleRate),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=(R0()*2-1)*Math.pow(1-i/n,4);const s0=ac.createBufferSource();s0.buffer=b;const f=ac.createBiquadFilter();f.type="bandpass";f.frequency.value=freq;f.Q.value=1.2;const g=ac.createGain();const d0=Math.hypot(me.x,me.z);g.gain.value=gain*clamp(1.1-d0/16)*.5;s0.connect(f);f.connect(g);g.connect(master);s0.start()}
-function crackle(){if(R0()<.55)pop(.08+R0()*.4,700+R0()*2400,.015+R0()*.05);setTimeout(crackle,70+R0()*420)}
+    const s=ac.createBufferSource();s.buffer=nb;s.loop=true;const lp=ac.createBiquadFilter();lp.type="lowpass";lp.frequency.value=520;const g=ac.createGain();g.gain.value=.3*MIX.wind;s.connect(lp);lp.connect(g);g.connect(master);s.start();CH.wind=g;
+    const l=ac.createOscillator(),lg=ac.createGain();l.frequency.value=.06;lg.gain.value=.08;l.connect(lg);lg.connect(g.gain);l.start();
+    setSound(true);loadLoop("cricket","audio/crickets.mp3",.6);loadLoop("fire","audio/fire.mp3",1)}catch(e){ac=null}}
+async function loadLoop(k,url,base){try{const buf=await ac.decodeAudioData(await (await fetch(url)).arrayBuffer());const s=ac.createBufferSource();s.buffer=buf;s.loop=true;const g=ac.createGain();g.gain.value=0;const lp=ac.createBiquadFilter();lp.type="lowpass";lp.frequency.value=k==="fire"?6000:9000;s.connect(lp);lp.connect(g);g.connect(master);s.start();CH[k]=g;CH[k+"Base"]=base;CH[k+"Lp"]=lp}catch(e){}}
+function fireLevel(){const d=Math.hypot(me.x,me.z);return clamp(1.15-d/14)*(me.k==="grass"?.7:1)}
+function applyMix(){if(!ac)return;const t=ac.currentTime;if(CH.wind)CH.wind.gain.setTargetAtTime(.3*MIX.wind,t,.2);if(CH.cricket)CH.cricket.gain.setTargetAtTime(CH.cricketBase*MIX.cricket,t,.2);if(CH.fire)CH.fire.gain.setTargetAtTime(CH.fireBase*MIX.fire*fireLevel(),t,.25)}
+function setMix(k,v){MIX[k]=clamp(+v);store.set("xy-v-"+k,String(MIX[k]));applyMix()}
 function setSound(v){soundOn=v;if(master)master.gain.setTargetAtTime(v?.8:0,ac.currentTime,.4)}
-function cricket(){if(ac&&soundOn&&!document.hidden){const t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain(),am=ac.createOscillator(),ag=ac.createGain(),lp=ac.createBiquadFilter();o.frequency.value=4200+R0()*400;am.frequency.value=26+R0()*8;ag.gain.value=1;am.connect(ag);const env=ac.createGain();env.gain.value=0;lp.type="lowpass";lp.frequency.value=5200;o.connect(env);env.connect(lp);lp.connect(g);g.connect(master);g.gain.value=.0035;ag.connect(env.gain);const n=2+(R0()*3|0);for(let i=0;i<n;i++){env.gain.setValueAtTime(0,t+i*.16);env.gain.linearRampToValueAtTime(1,t+i*.16+.02);env.gain.setValueAtTime(1,t+i*.16+.09);env.gain.linearRampToValueAtTime(0,t+i*.16+.11)}o.start(t);am.start(t);o.stop(t+n*.16+.1);am.stop(t+n*.16+.1)}setTimeout(cricket,4000+R0()*7000)}
 function pluck(f,v){if(!ac||!soundOn||v<.02)return;const t=ac.currentTime;[[1,1],[2,.32],[3,.12]].forEach(([k,a])=>{const o=ac.createOscillator(),g=ac.createGain();o.type="triangle";o.frequency.value=f*k/2;g.gain.setValueAtTime(.26*a*v,t);g.gain.exponentialRampToValueAtTime(.0005,t+1.5/k);o.connect(g);g.connect(master);o.start(t);o.stop(t+1.6)})}
 
 /* ---------- world data ---------- */
@@ -608,7 +615,7 @@ function buildMeteors(){for(let i=0;i<3;i++){const g=new THREE.BufferGeometry();
 function launch(big){if(!scene)return;const m=meteors.find(x=>x.t>=1)||meteors[0];const f=new THREE.Vector3();cam.getWorldDirection(f);const az=Math.atan2(f.x,-f.z)+(R0()-.5)*.7,el=Math.max(.42,Math.asin(clamp(f.y,-1,1))+.25+R0()*.2),d=R0()<.5?1:-1;
   const at=(a,e)=>new THREE.Vector3(Math.sin(a)*Math.cos(e),Math.sin(e),-Math.cos(a)*Math.cos(e)).multiplyScalar(1300);m.a.copy(at(az-.34*d,el+.14));m.b.copy(at(az+.34*d,el-.2));m.t=0;m.dur=big?1.5:.75;m.big=big;m.l.visible=true;if(big)toast("流星！")}
 function resize(){if(!R)return;const w=innerWidth,h=innerHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.fov=w/h<.75?64:46;cam.updateProjectionMatrix()}
-let nextMeteor=9,lastSend=0,meTag=null,screenWasHuman=true;const grassCam=new THREE.Vector3(0,2,12);
+let nextMeteor=9,lastSend=0,lastMix=0,meTag=null,screenWasHuman=true;const grassCam=new THREE.Vector3(0,2,12);
 function tick(now){
   requestAnimationFrame(tick);if(document.hidden)return;
   const dt=Math.min(.05,(now-last)/1000);last=now;const t=now/1000;strum=Math.max(0,strum-dt*2.4);
@@ -617,6 +624,7 @@ function tick(now){
   sky.material.uniforms.W2E.value.set(m[0][0],m[0][1],m[0][2], m[1][0],m[1][1],m[1][2], m[2][0],m[2][1],m[2][2]);
   starPts.material.uniforms.t.value=t;
   stepMe(dt);if(target&&now-lastSend>230){lastSend=now;push()}
+  if(ac&&now-lastMix>300){lastMix=now;applyMix()}
   if(marker&&marker.material.opacity>0){marker.material.opacity=Math.max(0,marker.material.opacity-dt*.8);const s=1+(1-marker.material.opacity)*.6;marker.scale.set(s,s,s)}
   const mm=me.mat>=0?MATS[me.mat]:null,py=walkH(me.x,me.z)+(me.pose!=="stand"?.07:0);
   stepFx(dt);let spin=0,av=1;
